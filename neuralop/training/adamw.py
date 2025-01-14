@@ -19,13 +19,13 @@ class AdamW(Optimizer):
         Iterable of parameters to optimize or dictionaries defining parameter groups.
     lr : float, *optional*, defaults to 0.001
         The learning rate to use.
-    betas (`Tuple[float,float]`, *optional*, defaults to `(0.9, 0.999)`):
+    betas : `Tuple[float,float]`, *optional*, defaults to `(0.9, 0.999)`:
         Adam's betas parameters (b1, b2).
-    eps (`float`, *optional*, defaults to 1e-06):
+    eps : `float`, *optional*, defaults to 1e-06:
         Adam's epsilon for numerical stability.
-    weight_decay (`float`, *optional*, defaults to 0.0):
+    weight_decay : `float`, *optional*, defaults to 0.0:
         Decoupled weight decay to apply.
-    correct_bias (`bool`, *optional*, defaults to `True`):
+    correct_bias `bool`, *optional*, defaults to `True`:
         Whether or not to correct bias in Adam (for instance, in Bert TF repository they use `False`).
     """
 
