@@ -1,8 +1,7 @@
 import pytest
 import torch
 from tltorch import FactorizedTensor
-from ..spectral_convolution import (SpectralConv3d, SpectralConv2d,
-                                       SpectralConv1d, SpectralConv)
+from ..spectral_convolution import SpectralConv
 
 
 
@@ -105,80 +104,3 @@ def test_SpectralConv_resolution_scaling_factor():
         x = torch.randn(2, 3, *size[:dim])
         res = conv(x)
         assert(list(res.shape[2:]) == [m*2 for m in size[:dim]])
-
-
-@pytest.mark.parametrize('factorization', ['ComplexCP', 'ComplexTucker'])
-@pytest.mark.parametrize('implementation', ['factorized', 'reconstructed'])
-def test_SpectralConv3D(factorization, implementation):
-    """Compare generic SpectralConv with hand written SpectralConv2D
-    
-    Verifies that a dense conv and factorized conv with the same weight produce the same output
-    Note that this implies the order in which the conv is done in the manual implementation matches the automatic one, 
-    take with a grain of salt
-    """
-    conv = SpectralConv(
-        3, 6, (4, 4, 3), bias=False, implementation=implementation, factorization=factorization
-    )
-
-    conv_dense = SpectralConv3d(
-        3, 6, (4, 4, 3), bias=False, implementation='reconstructed', factorization=None
-    )
-    rec = conv.weight.to_tensor()
-    dtype = rec.dtype
-    assert dtype == torch.cfloat
-    conv_dense.weight = FactorizedTensor.from_tensor(rec, rank=None, factorization='ComplexDense')
-
-    x = torch.randn(2, 3, 12, 12, 12)
-    res_dense = conv_dense(x)
-    res = conv(x)
-    torch.testing.assert_close(res_dense, res)
-
-@pytest.mark.parametrize('factorization', ['ComplexCP', 'ComplexTucker', 'ComplexDense'])
-@pytest.mark.parametrize('implementation', ['factorized', 'reconstructed'])
-def test_SpectralConv2D(factorization, implementation):
-    """Compare generic SpectralConv with hand written SpectralConv2D
-    
-    Verifies that a dense conv and factorized conv with the same weight produce the same output
-    Note that this implies the order in which the conv is done in the manual implementation matches the automatic one, 
-    take with a grain of salt
-    """
-    conv = SpectralConv(
-        10, 11, (4, 5), bias=False, implementation=implementation, factorization=factorization
-    )
-
-    conv_dense = SpectralConv2d(
-        10, 11, (4, 5), bias=False, implementation='reconstructed', factorization=None
-    )
-    rec = conv.weight.to_tensor()
-    dtype = rec.dtype
-    assert dtype == torch.cfloat
-    conv_dense.weight = FactorizedTensor.from_tensor(rec, rank=None, factorization='ComplexDense')
-
-    x = torch.randn(2, 10, 12, 12)
-    res_dense = conv_dense(x)
-    res = conv(x)
-    torch.testing.assert_close(res_dense, res)
-
-
-@pytest.mark.parametrize('factorization', ['ComplexCP', 'ComplexTucker'])
-@pytest.mark.parametrize('implementation', ['factorized', 'reconstructed'])
-def test_SpectralConv1D(factorization, implementation):
-    """Test for SpectralConv1D
-    
-    Verifies that a dense conv and factorized conv with the same weight produce the same output
-    """
-    conv = SpectralConv(
-        10, 11, (5,), bias=False, implementation=implementation, factorization=factorization
-    )
-    conv_dense = SpectralConv1d(
-        10, 11, (5,), bias=False, implementation='reconstructed', factorization=None
-    )
-    rec = conv.weight.to_tensor()
-    dtype = rec.dtype
-    assert dtype == torch.cfloat
-    conv_dense.weight = FactorizedTensor.from_tensor(rec, rank=None, factorization='ComplexDense')
-
-    x = torch.randn(2, 10, 12)
-    res_dense = conv_dense(x)
-    res = conv(x)
-    torch.testing.assert_close(res_dense, res)
