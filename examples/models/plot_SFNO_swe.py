@@ -4,6 +4,7 @@ Training a SFNO on the spherical Shallow Water equations
 
 In this example, we demonstrate how to use the small Spherical Shallow Water Equations example we ship with the package
 to train a Spherical Fourier-Neural Operator
+
 """
 
 # %%

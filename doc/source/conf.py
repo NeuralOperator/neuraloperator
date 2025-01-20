@@ -13,7 +13,7 @@
 # import os
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
-
+from pathlib import Path
 
 # -- Project information -----------------------------------------------------
 
@@ -26,6 +26,7 @@ author = 'Jean Kossaifi, David Pitt, Nikola Kovachki, Zongyi Li and Anima Anandk
 # The full version, including alpha/beta/rc tags
 import neuralop
 release = neuralop.__version__
+
 
 
 # -- General configuration ---------------------------------------------------
@@ -44,11 +45,35 @@ extensions = [
     'sphinx_gallery.gen_gallery',
 ]
 
+# -- sphinx_gallery configuration
+from sphinx_gallery.gen_gallery import ExplicitOrder
+
+sg_gallery_dir = 'auto_examples'
+sg_examples_dir = '../../examples'
+
+def subsection_title_order(src_dir: str):
+    """
+    src_dir : str
+        string name of source path
+    """
+
+    sub_folders = [p for p in Path(src_dir).iterdir() if p.is_dir()]
+    final_order = []
+    for sub_folder in sub_folders:
+        if sub_folder.name == "release_highlights":
+            final_order.insert(0, sub_folder)
+        else:
+            final_order.append(sub_folder)
+    return ExplicitOrder(final_order)
+    
 sphinx_gallery_conf = {
-     'examples_dirs': '../../examples',   # path to your example scripts
-     'gallery_dirs': 'auto_examples',  # path to where to save gallery generated output
+     'examples_dirs': [sg_examples_dir],   # path to your example scripts
+     'gallery_dirs': [sg_gallery_dir],  # path to where to save gallery generated output
+      #'subsection_order' : subsection_title_order(sg_examples_dir), # TODO@DAVID: turns out unneeded
+     'nested_sections': True, # ensure we can nest multiple levels in the gallery toctree
 }
 
+# -- Template configuration 
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -58,7 +83,7 @@ templates_path = ['_templates']
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = []
 
-# NumPy 
+# -- NumpyDoc configuration ---------------------------------------
 numpydoc_class_members_toctree = False
 numpydoc_show_class_members = True
 numpydoc_show_inherited_class_members = False

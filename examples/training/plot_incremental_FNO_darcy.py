@@ -4,6 +4,7 @@ Training an FNO with incremental meta-learning
 In this example, we demonstrate how to use the small Darcy-Flow 
 example we ship with the package to demonstrate the Incremental FNO
 meta-learning algorithm
+
 """
 
 # %%

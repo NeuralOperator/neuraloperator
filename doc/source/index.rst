@@ -131,7 +131,7 @@ of an equivalent, dense Fourier Neural Operator!
 
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
    :hidden:
 
    install

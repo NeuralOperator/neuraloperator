@@ -7,6 +7,7 @@ to train a Fourier Neural Operator.
 
 Note that this dataset is much smaller than one we would use in practice. The small Darcy-flow is an example built to
 be trained on a CPU in a few seconds, whereas normally we would train on one or multiple GPUs. 
+
 """
 
 # %%
@@ -106,7 +107,7 @@ trainer.train(train_loader=train_loader,
               eval_losses=eval_losses)
 
 # %%
-# .. plot_preds :
+# .. _plot_preds :
 # Visualizing predictions
 # ------------------------
 # Let's take a look at what our model's predicted outputs look like. 

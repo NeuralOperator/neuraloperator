@@ -5,6 +5,7 @@ Visualization of discrete-continuous convolutions
 In this example, we demonstrate the usage of the discrete-continuous (DISCO) convolutions
 used in the localized neural operator framework. These modules can be used on both equidistant
 and unstructured grids.
+
 """
 
 # %%
