@@ -5,29 +5,28 @@ from torch.nn import functional as F
 
 from neuralop.utils import validate_scaling_factor
 
-
 class DomainPadding(nn.Module):
     """Applies domain padding scaled automatically to the input's resolution
 
     Parameters
     ----------
-    domain_padding : float or list
+    domain_padding : ``float`` or ``list``
         typically, between zero and one, percentage of padding to use
         if a list, make sure if matches the dim of (d1, ..., dN)
-    padding_mode : {'symmetric', 'one-sided'}, optional
-        whether to pad on both sides, by default 'one-sided'
-    resolution_scaling_factor : int ; default is 1
+    padding_mode : ``{'symmetric', 'one-sided'}``, optional
+        whether to pad on both sides, by default ``'symmetric'``
+    resolution_scaling_factor : ``int`` ; default is 1
 
     Notes
     -----
-    This class works for any input resolution, as long as it is in the form
-    `(batch-size, channels, d1, ...., dN)`
+    This class works for any input resolution. Expects inputs of shape
+   ` `(batch-size, channels, d1, ...., dN)``
     """
 
     def __init__(
         self,
-        domain_padding,
-        padding_mode="one-sided",
+        domain_padding: Union[float, list],
+        padding_mode: str="symmetric",
         resolution_scaling_factor: Union[int, List[int]] = 1,
     ):
         super().__init__()
@@ -44,7 +43,9 @@ class DomainPadding(nn.Module):
         self._unpad_indices = dict()
 
     def forward(self, x):
-        """forward pass: pad the input"""
+        """
+        forward pass: pad the input
+        """
         self.pad(x)
 
     def pad(self, x, verbose=False):

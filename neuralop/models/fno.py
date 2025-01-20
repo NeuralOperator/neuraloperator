@@ -92,7 +92,7 @@ class FNO(BaseModel, name='FNO'):
         pass in a list of percentages e.g. [p1, p2, ..., pN] such that
         p1 corresponds to the percentage of padding along dim 1, etc.
     domain_padding_mode : str {'symmetric', 'one-sided'}, optional
-        How to perform domain padding, by default 'one-sided'
+        How to perform domain padding, by default 'symmetric'
     fno_block_precision : str {'full', 'half', 'mixed'}, optional
         precision mode in which to perform spectral convolution, by default "full"
     stabilizer : str {'tanh'} | None, optional
@@ -178,7 +178,7 @@ class FNO(BaseModel, name='FNO'):
         fno_skip: str="linear",
         resolution_scaling_factor: Union[Number, List[Number]]=None,
         domain_padding: Union[Number, List[Number]]=None,
-        domain_padding_mode: str="one-sided",
+        domain_padding_mode: str="symmetric",
         fno_block_precision: str="full",
         stabilizer: str=None,
         max_n_modes: Tuple[int]=None,
@@ -432,7 +432,7 @@ class FNO1d(FNO):
         implementation="factorized",
         decomposition_kwargs=dict(),
         domain_padding=None,
-        domain_padding_mode="one-sided",
+        domain_padding_mode="symmetric",
         **kwargs
     ):
         super().__init__(
@@ -507,7 +507,7 @@ class FNO2d(FNO):
         implementation="factorized",
         decomposition_kwargs=dict(),
         domain_padding=None,
-        domain_padding_mode="one-sided",
+        domain_padding_mode="symmetric",
         **kwargs
     ):
         super().__init__(
@@ -586,7 +586,7 @@ class FNO3d(FNO):
         implementation="factorized",
         decomposition_kwargs=dict(),
         domain_padding=None,
-        domain_padding_mode="one-sided",
+        domain_padding_mode="symmetric",
         **kwargs
     ):
         super().__init__(
