@@ -6,6 +6,7 @@ import torch
 import math
 from torch import nn
 import torch.nn.functional as F
+from .resample import resample
 from .fno_block import FNOBlocks
 from .spectral_convolution import SpectralConv
 
@@ -43,7 +44,7 @@ class CODABlocks(nn.Module):
     scale : int
         Scale for downsampling Q, K functions before calculating the attention matrix.
         Higher scale will downsample more.
-    output_scaling_factor : float
+    resolution_scaling_factor : float
         Scaling factor for the output.
     
     Other Parameters
@@ -93,7 +94,7 @@ class CODABlocks(nn.Module):
         temperature=1.0,
         nonlinear_attention=False,
         scale=None,
-        output_scaling_factor=None,
+        resolution_scaling_factor=None,
         incremental_n_modes=None,
         non_linearity=F.gelu,
         use_channel_mlp=True,
@@ -115,14 +116,20 @@ class CODABlocks(nn.Module):
 
         # Co-dimension of each variable/token. The token embedding space is
         # identical to the variable space, so their dimensionalities are equal.
+        if per_channel_attention:
+            # for per channel attention, forcing the values of token dims
+            token_codimension = 1
+            head_codimension = 1
+
         self.token_codimension = token_codimension
 
         # codim of attention from each head
         self.head_codimension = (head_codimension
                                  if head_codimension is not None
                                  else token_codimension)
+
         self.n_heads = n_heads  # number of heads
-        self.output_scaling_factor = output_scaling_factor
+        self.resolution_scaling_factor = resolution_scaling_factor
         self.temperature = temperature
         self.n_dim = len(n_modes)
 
@@ -148,17 +155,12 @@ class CODABlocks(nn.Module):
         self.codimension_size = codimension_size
         self.mixer_token_codimension = token_codimension
 
-        if per_channel_attention:
-            # for per channel attention, forcing the values of token dims
-            self.token_codimension = 1
-            self.head_codimension = 1
-
         # this scale used for downsampling Q,K functions
         if scale is None:
-            scale = 2 if per_channel_attention else 1
+            scale = 0.5 if per_channel_attention else 1
             scale = min(self.n_heads, scale)
 
-        mixer_modes = [i // scale for i in n_modes]
+        mixer_modes = [int(i*scale) for i in n_modes]
 
         if decomposition_kwargs is None:
             decomposition_kwargs = {}
@@ -190,19 +192,19 @@ class CODABlocks(nn.Module):
             n_layers=1,
         )
         self.Key = FNOBlocks(
-            output_scaling_factor=1 / scale,
+            resolution_scaling_factor=1 * scale,
             conv_module=conv_module,
             **kqv_args,
             **common_args,
         )
         self.Query = FNOBlocks(
-            output_scaling_factor=1 / scale,
+            resolution_scaling_factor=1 * scale,
             conv_module=conv_module,
             **kqv_args,
             **common_args,
         )
         self.Value = FNOBlocks(
-            output_scaling_factor=1,
+            resolution_scaling_factor=1,
             conv_module=conv_module,
             **kqv_args,
             **common_args,
@@ -213,7 +215,7 @@ class CODABlocks(nn.Module):
                 in_channels=self.n_heads * self.head_codimension,
                 out_channels=self.token_codimension,
                 n_modes=n_modes,
-                output_scaling_factor=1,
+                resolution_scaling_factor=1,
                 # args below are shared with KQV blocks
                 apply_skip=True,
                 non_linearity=torch.nn.Identity(),
@@ -230,7 +232,7 @@ class CODABlocks(nn.Module):
 
         mixer_args = dict(
             n_modes=n_modes,
-            output_scaling_factor=1,
+            resolution_scaling_factor=1,
             non_linearity=non_linearity,
             norm='instance_norm',
             fno_skip=fno_skip,
@@ -250,9 +252,10 @@ class CODABlocks(nn.Module):
                 **common_args,
             )
             self.norm1 = norm_module(self.token_codimension)
-            self.norm2 = norm_module(self.mixer_token_codimension)
+            self.mixer_in_normalizer = norm_module(self.mixer_token_codimension)
             self.mixer_out_normalizer = norm_module(
                 self.mixer_token_codimension)
+            print("print token code dimension", self.token_codimension, self.mixer_token_codimension)
 
         else:
             self.mixer = FNOBlocks(
@@ -263,7 +266,7 @@ class CODABlocks(nn.Module):
                 **common_args,
             )
             self.norm1 = norm_module(codimension_size)
-            self.norm2 = norm_module(codimension_size)
+            self.mixer_in_normalizer = norm_module(codimension_size)
             self.mixer_out_normalizer = norm_module(codimension_size)
 
     def compute_attention(self, tokens, batch_size):
@@ -329,7 +332,7 @@ class CODABlocks(nn.Module):
 
         return attention
 
-    def forward(self, x):
+    def forward(self, x, output_shape=None):
         """
         CoDANO's forward pass. 
 
@@ -347,12 +350,15 @@ class CODABlocks(nn.Module):
             b is the batch size, t is the number of tokens, and d is the token codimension.
         """
 
-        if self.permutation_eq:
-            return self._forward_equivariant(x)
-        else:
-            return self._forward_non_equivariant(x)
+        if self.resolution_scaling_factor is not None and output_shape is None:
+            output_shape = [int(i * j) for (i,j) in zip(x.shape[-self.n_dim:], self.resolution_scaling_factor)]
 
-    def _forward_equivariant(self, x):
+        if self.permutation_eq:
+            return self._forward_equivariant(x, output_shape=output_shape)
+        else:
+            return self._forward_non_equivariant(x, output_shape=output_shape)
+
+    def _forward_equivariant(self, x, output_shape=None):
         """
         Forward pass with a permutation equivariant mixer layer after the
         attention mechanism. Shares the same mixer layer for all tokens, meaning
@@ -365,7 +371,7 @@ class CODABlocks(nn.Module):
             b is the batch size, t is the number of tokens, and d is the token codimension.
         """
         batch_size = x.shape[0]
-        output_shape = x.shape[-self.n_dim:]
+        input_shape = x.shape[-self.n_dim:]
 
         assert x.shape[1] % self.token_codimension == 0, "Number of channels in x should be divisible by token_codimension"
 
@@ -382,8 +388,8 @@ class CODABlocks(nn.Module):
         if self.multi_head_proj is not None:
             attention = self.multi_head_proj(attention)
         attention = self.attention_normalizer(attention + tokens)
-        attention_normalized = self.norm2(attention)
-        output = self.mixer(attention_normalized, output_shape=output_shape)
+        attention_normalized = self.mixer_in_normalizer(attention)
+        output = self.mixer(attention_normalized, output_shape=input_shape)
         output = self.mixer_out_normalizer(output) + attention
 
         # reshape from shape (b*t) d h w... to b (t d) h w ...
@@ -392,10 +398,16 @@ class CODABlocks(nn.Module):
             batch_size,
             t * output.size(1),
             *output.shape[-self.n_dim:])
+        
+        if output_shape is not None:
+            output = resample(output,
+                              res_scale=[j/i for (i, j) in zip(output.shape[-self.n_dim:], output_shape)],
+                              axis=list(range(-self.n_dim, 0)),
+                              output_shape=output_shape)
 
         return output
 
-    def _forward_non_equivariant(self, x):
+    def _forward_non_equivariant(self, x, output_shape=None):
         """
         Forward pass with a non-permuatation equivariant mixer layer and normalizations.
         After attention, the tokens are stacked along the channel dimension before mixing,
@@ -409,7 +421,7 @@ class CODABlocks(nn.Module):
         """
 
         batch_size = x.shape[0]
-        output_shape = x.shape[-self.n_dim:]
+        input_shape = x.shape[-self.n_dim:]
 
         assert x.shape[1] % self.token_codimension == 0, "Number of channels in x should be divisible by token_codimension"
 
@@ -436,9 +448,15 @@ class CODABlocks(nn.Module):
             t * attention.size(2),
             *attention.shape[-self.n_dim:])
 
-        attention_normalized = self.norm2(attention)
-        output = self.mixer(attention_normalized, output_shape=output_shape)
+        attention_normalized = self.mixer_in_normalizer(attention)
+        output = self.mixer(attention_normalized, output_shape=input_shape)
 
         output = self.mixer_out_normalizer(output) + attention
+
+        if output_shape is not None:
+            output = resample(output,
+                              res_scale=[j/i for (i, j) in zip(output.shape[-self.n_dim:], output_shape)],
+                              axis=list(range(-self.n_dim, 0)),
+                              output_shape=output_shape)
 
         return output
