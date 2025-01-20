@@ -5,13 +5,13 @@ import torch
 from tensorly import tenalg
 from configmypy import Bunch
 
-from neuralop.models import LocalFNO
+from neuralop.models import LocalNO
 
 tenalg.set_backend("einsum")
 
 @pytest.mark.parametrize("n_dim", [1, 2, 3])
 @pytest.mark.parametrize("mix_derivatives", [True, False])
-def test_local_fno_without_disco(
+def test_local_no_without_disco(
     n_dim,
     mix_derivatives,
 ):
@@ -37,7 +37,7 @@ def test_local_fno_without_disco(
     size = (s,) * n_dim
     n_modes = (modes,) * n_dim
     conv_padding_mode = 'zeros'
-    model = LocalFNO(
+    model = LocalNO(
         in_channels=3,
         out_channels=1,
         default_in_shape=size,
@@ -80,7 +80,7 @@ def test_local_fno_without_disco(
     [2,4],
     [3,3],
 ])
-def test_local_fno_with_disco(
+def test_local_no_with_disco(
     disco_layers,
     disco_kernel_shape
 ):
@@ -109,7 +109,7 @@ def test_local_fno_with_disco(
     size = (s,) * n_dim
     n_modes = (modes,) * n_dim
     
-    model = LocalFNO(
+    model = LocalNO(
         in_channels=3,
         out_channels=1,
         default_in_shape=size,

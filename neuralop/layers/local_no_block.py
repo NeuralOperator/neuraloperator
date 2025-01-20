@@ -18,8 +18,8 @@ from ..utils import validate_scaling_factor
 Number = Union[int, float]
 
 
-class LocalFNOBlocks(nn.Module):
-    """LocalFNOBlocks implements a sequence of Fourier layers, the operations of which 
+class LocalNOBlocks(nn.Module):
+    """LocalNOBlocks implements a sequence of Fourier layers, the operations of which 
     are first described in [1]_. The exact implementation details of the Fourier 
     layer architecture are discussed in [2]_. The Fourier layers are placed in parallel 
     with differential kernel layers and local integral layers, as described in [3]_.
@@ -67,7 +67,7 @@ class LocalFNOBlocks(nn.Module):
         Whether to mix derivatives across channels.
     max_n_modes : int, List[int], optional
         maximum number of modes to keep along each dimension, by default None
-    fno_block_precision : str, optional
+    local_no_block_precision : str, optional
         floating point precision to use for computations, by default "full"
     channel_mlp_dropout : int, optional
         dropout parameter for self.channel_mlp, by default 0
@@ -86,8 +86,8 @@ class LocalFNOBlocks(nn.Module):
         whether to call forward pass with pre-activation, by default False
         if True, call nonlinear activation and norm before Fourier convolution
         if False, call activation and norms after Fourier convolutions
-    fno_skip : str, optional
-        module to use for FNO skip connections, by default "linear"
+    local_no_skip : str, optional
+        module to use for Local NO skip connections, by default "linear"
         see layers.skip_connections for more details
     channel_mlp_skip : str, optional
         module to use for ChannelMLP skip connections, by default "soft-gating"
@@ -96,7 +96,7 @@ class LocalFNOBlocks(nn.Module):
     Other Parameters
     -------------------
     complex_data : bool, optional
-        whether the FNO's data takes on complex values in space, by default False
+        whether the Local NO's data takes on complex values in space, by default False
     separable : bool, optional
         separable parameter for SpectralConv, by default False
     factorization : str, optional
@@ -104,7 +104,7 @@ class LocalFNOBlocks(nn.Module):
     rank : float, optional
         rank parameter for SpectralConv, by default 1.0
     conv_module : BaseConv, optional
-        module to use for convolutions in FNO block, by default SpectralConv
+        module to use for convolutions in Local NO block, by default SpectralConv
     joint_factorization : bool, optional
         whether to factorize all spectralConv weights as one tensor, by default False
     fixed_rank_modes : bool, optional
@@ -144,7 +144,7 @@ class LocalFNOBlocks(nn.Module):
         fin_diff_kernel_size=3,
         mix_derivatives=True,
         max_n_modes=None,
-        fno_block_precision="full",
+        local_no_block_precision="full",
         use_channel_mlp=False,
         channel_mlp_dropout=0,
         channel_mlp_expansion=0.5,
@@ -153,7 +153,7 @@ class LocalFNOBlocks(nn.Module):
         norm=None,
         ada_in_features=None,
         preactivation=False,
-        fno_skip="linear",
+        local_no_skip="linear",
         channel_mlp_skip="soft-gating",
         separable=False,
         factorization=None,
@@ -194,7 +194,7 @@ class LocalFNOBlocks(nn.Module):
         ] = validate_scaling_factor(resolution_scaling_factor, self.n_dim, n_layers)
 
         self.max_n_modes = max_n_modes
-        self.fno_block_precision = fno_block_precision
+        self.local_no_block_precision = local_no_block_precision
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.n_layers = n_layers
@@ -204,7 +204,7 @@ class LocalFNOBlocks(nn.Module):
         self.factorization = factorization
         self.fixed_rank_modes = fixed_rank_modes
         self.decomposition_kwargs = decomposition_kwargs
-        self.fno_skip = fno_skip
+        self.local_no_skip = local_no_skip
         self.channel_mlp_skip = channel_mlp_skip
         self.use_channel_mlp = use_channel_mlp
         self.channel_mlp_expansion = channel_mlp_expansion
@@ -254,12 +254,12 @@ class LocalFNOBlocks(nn.Module):
             ]
         )
 
-        self.fno_skips = nn.ModuleList(
+        self.local_no_skips = nn.ModuleList(
             [
                 skip_connection(
                     self.in_channels,
                     self.out_channels,
-                    skip_type=fno_skip,
+                    skip_type=local_no_skip,
                     n_dim=self.n_dim,
                 )
                 for _ in range(n_layers)
@@ -389,8 +389,8 @@ class LocalFNOBlocks(nn.Module):
             return self.forward_with_postactivation(x, index, output_shape)
 
     def forward_with_postactivation(self, x, index=0, output_shape=None):
-        x_skip_fno = self.fno_skips[index](x)
-        x_skip_fno = self.convs[index].transform(x_skip_fno, output_shape=output_shape)
+        x_skip_local_no = self.local_no_skips[index](x)
+        x_skip_local_no = self.convs[index].transform(x_skip_local_no, output_shape=output_shape)
 
         if self.mlp is not None:
             x_skip_mlp = self.channel_mlp_skips[index](x)
@@ -399,7 +399,7 @@ class LocalFNOBlocks(nn.Module):
         if self.stabilizer == "tanh":
             x = torch.tanh(x)
 
-        x_fno = self.convs[index](x, output_shape=output_shape)
+        x_local_no = self.convs[index](x, output_shape=output_shape)
 
         if self.differential_idx_list[index] != -1:
             grid_width_scaling_factor = 1 / (x.shape[-1] / self.default_in_shape[0])
@@ -414,12 +414,12 @@ class LocalFNOBlocks(nn.Module):
         else:
             x_localconv = 0
 
-        x_fno_diff_disco = x_fno + x_differential + x_localconv
+        x_local_no_diff_disco = x_local_no + x_differential + x_localconv
 
         if self.norm is not None:
-            x_fno_diff_disco = self.norm[self.n_norms * index](x_fno_diff_disco)
+            x_local_no_diff_disco = self.norm[self.n_norms * index](x_local_no_diff_disco)
 
-        x = x_fno_diff_disco + x_skip_fno
+        x = x_local_no_diff_disco + x_skip_local_no
 
         if (self.mlp is not None) or (index < (self.n_layers - 1)):
             x = self.non_linearity(x)
@@ -454,8 +454,8 @@ class LocalFNOBlocks(nn.Module):
         else:
             x_localconv = 0
 
-        x_skip_fno = self.fno_skips[index](x)
-        x_skip_local_fno = self.convs[index].transform(x_skip_fno + x_differential + x_localconv, output_shape=output_shape)
+        x_skip_local_no = self.local_no_skips[index](x)
+        x_skip_local_local_no = self.convs[index].transform(x_skip_local_no + x_differential + x_localconv, output_shape=output_shape)
 
         if self.mlp is not None:
             x_skip_mlp = self.channel_mlp_skips[index](x)
@@ -464,9 +464,9 @@ class LocalFNOBlocks(nn.Module):
         if self.stabilizer == "tanh":
             x = torch.tanh(x)
 
-        x_fno = self.convs[index](x, output_shape=output_shape)
+        x_local_no = self.convs[index](x, output_shape=output_shape)
 
-        x = x_fno + x_skip_local_fno
+        x = x_local_no + x_skip_local_local_no
 
         if self.mlp is not None:
             if index < (self.n_layers - 1):
@@ -490,9 +490,9 @@ class LocalFNOBlocks(nn.Module):
         self._n_modes = n_modes
 
     def get_block(self, indices):
-        """Returns a sub-FNO Block layer from the jointly parametrized main block
+        """Returns a sub-NO Block layer from the jointly parametrized main block
 
-        The parametrization of an FNOBlock layer is shared with the main one.
+        The parametrization of an LocalNOBlock layer is shared with the main one.
         """
         if self.n_layers == 1:
             raise ValueError(

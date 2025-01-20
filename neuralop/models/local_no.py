@@ -9,15 +9,15 @@ import torch.nn.functional as F
 from ..layers.embeddings import GridEmbeddingND, GridEmbedding2D
 from ..layers.spectral_convolution import SpectralConv
 from ..layers.padding import DomainPadding
-from neuralop.layers.local_fno_block import LocalFNOBlocks
+from neuralop.layers.local_no_block import LocalNOBlocks
 from ..layers.channel_mlp import ChannelMLP
 from ..layers.complex import ComplexValued
 from .base_model import BaseModel
 
-class LocalFNO(BaseModel, name='LocalFNO'):
-    """N-Dimensional Local Fourier Neural Operator. The LocalFNO shares
+class LocalNO(BaseModel, name='LocalNO'):
+    """N-Dimensional Local Fourier Neural Operator. The LocalNO shares
     its forward pass and architecture with the standard FNO, with the key difference
-    that its Fourier convolution layers are replaced with LocalFNOBlocks that place
+    that its Fourier convolution layers are replaced with LocalNOBlocks that place
     differential kernel layers and local integral layers in parallel to its 
     Fourier layers as detailed in [1]_.
 
@@ -25,17 +25,17 @@ class LocalFNO(BaseModel, name='LocalFNO'):
     ----------
     n_modes : Tuple[int]
         number of modes to keep in Fourier Layer, along each dimension
-        The dimensionality of the FNO is inferred from ``len(n_modes)``
+        The dimensionality of the Local NO is inferred from ``len(n_modes)``
     in_channels : int
         Number of channels in input function
     out_channels : int
         Number of channels in output function
     hidden_channels : int
-        width of the FNO (i.e. number of channels), by default 256
+        width of the Local NO (i.e. number of channels), by default 256
     default_in_shape : Tuple[int]
         Default input shape on spatiotemporal dimensions for structured DISCO convolutions
     n_layers : int, optional
-        Number of FNO block Layers, by default 4
+        Number of Local NO block Layers, by default 4
     disco_layers : bool or bool list, optional
         Must be same length as n_layers, dictates whether to include a
         local integral kernel parallel connection at each layer. If a single
@@ -65,15 +65,15 @@ class LocalFNO(BaseModel, name='LocalFNO'):
     ------------------
     lifting_channel_ratio : int, optional
         ratio of lifting channels to hidden_channels, by default 2
-        The number of liting channels in the lifting block of the FNO is
+        The number of liting channels in the lifting block of the Local FNO is
         lifting_channel_ratio * hidden_channels (e.g. default 512)
     projection_channel_ratio : int, optional
         ratio of projection channels to hidden_channels, by default 2
-        The number of projection channels in the projection block of the FNO is
+        The number of projection channels in the projection block of the Local FNO is
         projection_channel_ratio * hidden_channels (e.g. default 512)
     positional_embedding : Union[str, nn.Module], optional
         Positional embedding to apply to last channels of raw input
-        before being passed through the FNO. Defaults to "grid"
+        before being passed through the Local FNO. Defaults to "grid"
 
         * If "grid", appends a grid positional embedding with default settings to 
         the last channels of raw input. Assumes the inputs are discretized
@@ -97,7 +97,7 @@ class LocalFNO(BaseModel, name='LocalFNO'):
         expansion parameter for ChannelMLP in FNO Block, by default 0.5
     channel_mlp_skip : str {'linear', 'identity', 'soft-gating'}, optional
         Type of skip connection to use in channel-mixing mlp, by default 'soft-gating'
-    fno_skip : str {'linear', 'identity', 'soft-gating'}, optional
+    local_no_skip : str {'linear', 'identity', 'soft-gating'}, optional
         Type of skip connection to use in FNO layers, by default 'linear'
     resolution_scaling_factor : Union[Number, List[Number]], optional
         layer-wise factor by which to scale the domain resolution of function, by default None
@@ -112,13 +112,13 @@ class LocalFNO(BaseModel, name='LocalFNO'):
         p1 corresponds to the percentage of padding along dim 1, etc.
     domain_padding_mode : str {'symmetric', 'one-sided'}, optional
         How to perform domain padding, by default 'one-sided'
-    fno_block_precision : str {'full', 'half', 'mixed'}, optional
+    local_no_block_precision : str {'full', 'half', 'mixed'}, optional
         precision mode in which to perform spectral convolution, by default "full"
     stabilizer : str {'tanh'} | None, optional
         whether to use a tanh stabilizer in FNO block, by default None
 
         Note: stabilizer greatly improves performance in the case
-        `fno_block_precision='mixed'`. 
+        `local_no_block_precision='mixed'`. 
 
     max_n_modes : Tuple[int] | None, optional
 
@@ -130,7 +130,7 @@ class LocalFNO(BaseModel, name='LocalFNO'):
 
         This can be updated dynamically during training.
     factorization : str, optional
-        Tensor factorization of the FNO layer weights to use, by default None.
+        Tensor factorization of the Local FNO layer weights to use, by default None.
 
         * If None, a dense tensor parametrizes the Spectral convolutions
 
@@ -152,12 +152,12 @@ class LocalFNO(BaseModel, name='LocalFNO'):
     Examples
     ---------
     
-    >>> from neuralop.models import LocalFNO
-    >>> model = LocalFNO(n_modes=(12,12), in_channels=1, out_channels=1, hidden_channels=64)
+    >>> from neuralop.models import LocalNO
+    >>> model = LocalNO(n_modes=(12,12), in_channels=1, out_channels=1, hidden_channels=64)
     >>> model
     FNO(
     (positional_embedding): GridEmbeddingND()
-    (fno_blocks): LocalFNOBlocks(
+    (local_no_blocks): LocalNOBlocks(
         (convs): SpectralConv(
         (weight): ModuleList(
             (0-3): 4 x DenseTensor(shape=torch.Size([64, 64, 12, 7]), rank=None)
@@ -200,11 +200,11 @@ class LocalFNO(BaseModel, name='LocalFNO'):
         channel_mlp_dropout: float=0,
         channel_mlp_expansion: float=0.5,
         channel_mlp_skip: str="soft-gating",
-        fno_skip: str="linear",
+        local_no_skip: str="linear",
         resolution_scaling_factor: Union[Number, List[Number]]=None,
         domain_padding: Union[Number, List[Number]]=None,
         domain_padding_mode: str="one-sided",
-        fno_block_precision: str="full",
+        local_no_block_precision: str="full",
         stabilizer: str=None,
         max_n_modes: Tuple[int]=None,
         factorization: str=None,
@@ -222,7 +222,7 @@ class LocalFNO(BaseModel, name='LocalFNO'):
         self.n_dim = len(n_modes)
         
         # n_modes is a special property - see the class' property for underlying mechanism
-        # When updated, change should be reflected in fno blocks
+        # When updated, change should be reflected in local_no blocks
         self._n_modes = n_modes
 
         self.hidden_channels = hidden_channels
@@ -242,13 +242,13 @@ class LocalFNO(BaseModel, name='LocalFNO'):
         self.factorization = factorization
         self.fixed_rank_modes = fixed_rank_modes
         self.decomposition_kwargs = decomposition_kwargs
-        self.fno_skip = (fno_skip,)
+        self.local_no_skip = (local_no_skip,)
         self.channel_mlp_skip = (channel_mlp_skip,)
         self.implementation = implementation
         self.separable = separable
         self.preactivation = preactivation
         self.complex_data = complex_data
-        self.fno_block_precision = fno_block_precision
+        self.local_no_block_precision = local_no_block_precision
         
         if positional_embedding == "grid":
             spatial_grid_boundaries = [[0., 1.]] * self.n_dim
@@ -265,7 +265,7 @@ class LocalFNO(BaseModel, name='LocalFNO'):
         elif positional_embedding == None:
             self.positional_embedding = None
         else:
-            raise ValueError(f"Error: tried to instantiate FNO positional embedding with {positional_embedding},\
+            raise ValueError(f"Error: tried to instantiate positional embedding with {positional_embedding},\
                               expected one of \'grid\', GridEmbeddingND")
         
         if domain_padding is not None and (
@@ -288,7 +288,7 @@ class LocalFNO(BaseModel, name='LocalFNO'):
                 resolution_scaling_factor = [resolution_scaling_factor] * self.n_layers
         self.resolution_scaling_factor = resolution_scaling_factor
 
-        self.fno_blocks = LocalFNOBlocks(
+        self.local_no_blocks = LocalNOBlocks(
             in_channels=hidden_channels,
             out_channels=hidden_channels,
             n_modes=self.n_modes,
@@ -310,11 +310,11 @@ class LocalFNO(BaseModel, name='LocalFNO'):
             stabilizer=stabilizer,
             norm=norm,
             preactivation=preactivation,
-            fno_skip=fno_skip,
+            local_no_skip=local_no_skip,
             channel_mlp_skip=channel_mlp_skip,
             complex_data=complex_data,
             max_n_modes=max_n_modes,
-            fno_block_precision=fno_block_precision,
+            local_no_block_precision=local_no_block_precision,
             rank=rank,
             fixed_rank_modes=fixed_rank_modes,
             implementation=implementation,
@@ -376,7 +376,7 @@ class LocalFNO(BaseModel, name='LocalFNO'):
 
         3. Applies optional domain padding to high-dimensional intermediate function representation
 
-        4. Applies `n_layers` Fourier/FNO layers in sequence (SpectralConvolution + skip connections, nonlinearity) 
+        4. Applies `n_layers` Local NO layers in sequence (Differential + optional DISCO + skip connections, nonlinearity) 
 
         5. If domain padding was applied, domain padding is removed
 
@@ -412,7 +412,7 @@ class LocalFNO(BaseModel, name='LocalFNO'):
             x = self.domain_padding.pad(x)
 
         for layer_idx in range(self.n_layers):
-            x = self.fno_blocks(x, layer_idx, output_shape=output_shape[layer_idx])
+            x = self.local_no_blocks(x, layer_idx, output_shape=output_shape[layer_idx])
 
         if self.domain_padding is not None:
             x = self.domain_padding.unpad(x)
@@ -427,5 +427,5 @@ class LocalFNO(BaseModel, name='LocalFNO'):
 
     @n_modes.setter
     def n_modes(self, n_modes):
-        self.fno_blocks.n_modes = n_modes
+        self.local_no_blocks.n_modes = n_modes
         self._n_modes = n_modes
